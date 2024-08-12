@@ -128,7 +128,7 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 		gl: WebGL2RenderingContext,
 		width: number,
 		height: number,
-		type: GLenum = gl.FLOAT
+		type: GLenum = gl.UNSIGNED_BYTE
 	) {
 		const texture = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_2D, texture);
