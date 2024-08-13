@@ -4,11 +4,13 @@
 	import createRegl from 'regl';
 	import { initProgram } from './weglUtils';
 	import { initializeBloomEffect } from './bloomPass';
+	import { createRadialGradientTexture, createRedTexture } from './createRadialGradient';
+	import { renderTextureFullScreen } from './testTexture';
 
 	let canvas: HTMLCanvasElement;
 	let gl: WebGL2RenderingContext;
 
-	const NUM_BOIDS = 100000;
+	const NUM_BOIDS = 10000;
 
 	onMount(async () => {
 		gl = canvas.getContext('webgl2')!;
@@ -34,7 +36,7 @@
 
 		const uLoc = (name: string) => gl.getUniformLocation(boidsProgram, name)!;
 
-		gl.uniform1f(uLoc('u_pointSize'), 1);
+		gl.uniform1f(uLoc('u_pointSize'), 1.5);
 		gl.uniform1f(uLoc('u_maxSpeed'), 50);
 
 		// Set up perspective matrix
@@ -149,24 +151,6 @@
 			putInGrid(gridIndex, i, pos.toArray(), vel.toArray());
 		}
 
-		const textureSize = new THREE.Vector2(
-			canvasSize.x * canvasSize.y,
-			canvasSize.z * numbersPerCell
-		);
-
-		//create webgl texture for grid
-		const gridTexture = gl.texImage2D(
-			gl.TEXTURE_2D,
-			0,
-			gl.RGBA32I,
-			textureSize.x,
-			textureSize.y,
-			0,
-			gl.RGBA_INTEGER,
-			gl.INT,
-			new Float32Array(grid)
-		);
-
 		// set the texture to the uniform
 		gl.uniform1i(gl.getUniformLocation(boidsProgram, 'u_grid'), 0);
 
@@ -188,13 +172,23 @@
 		const velocityLoc = gl.getAttribLocation(boidsProgram, 'a_velocity');
 		gl.enableVertexAttribArray(velocityLoc);
 
+		// Create and bind the radial gradient texture
+		const gradientTexture = createRadialGradientTexture(gl, 200)!;
+		const gradientTextureLoc = gl.getUniformLocation(boidsProgram, 'u_gradientTexture');
+		// const uGradientTextureLocation = gl.getUniformLocation(boidsProgram, 'u_gradientTexture');
+
+		// renderTextureFullScreen((gl) => createRadialGradientTexture(gl, 200)!, 200, 200);
+
 		const renderBloomPass = initializeBloomEffect(gl, canvas);
 
 		let lastTime = 0;
 		let lastFps = 0;
 
-		// gl.enable(gl.BLEND);
-		// gl.blendFunc(gl.ONE, gl.ONE);
+		// Enable blending
+		gl.enable(gl.BLEND);
+
+		// Set the blend function for transparency
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 		regl.frame((context) => {
 			regl.clear({ color: [0, 0, 0, 0], depth: 1 });
@@ -203,11 +197,16 @@
 
 			gl.uniform1f(uLoc('u_deltaTime'), context.time - lastTime);
 
+			let timeToOutput = false;
+			let fps = 0;
+
 			if (context.time - lastFps > 1) {
-				const fps = 1 / (context.time - lastTime);
-				console.log(fps);
+				fps = 1 / (context.time - lastTime);
+				timeToOutput = true;
 				lastFps = context.time;
 			}
+
+			if (timeToOutput) console.log(fps);
 
 			lastTime = context.time;
 
@@ -223,8 +222,21 @@
 
 			renderBloomPass(() => {
 				gl.useProgram(boidsProgram);
+
+				// Bind the gradient texture to texture unit 0
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, gradientTexture);
+
+				// Set the uniform for the sampler in your shader
+				gl.uniform1i(gradientTextureLoc, 0);
+
+				// Ensure no texture is bound before drawing
+
 				gl.beginTransformFeedback(gl.POINTS);
+
+				// gl.bindTexture(gl.TEXTURE_2D, null);
 				gl.drawArrays(gl.POINTS, 0, NUM_BOIDS);
+
 				gl.endTransformFeedback();
 			});
 
@@ -236,31 +248,33 @@
 			velocityBuffers.reverse();
 			gridIndexBuffers.reverse();
 
-			//read the output from the grid index buffer
-			gl.bindBuffer(gl.ARRAY_BUFFER, gridIndexBuffers[1]);
-			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, gridIndeces);
+			// //read the output from the grid index buffer
+			// gl.bindBuffer(gl.ARRAY_BUFFER, gridIndexBuffers[1]);
+			// gl.getBufferSubData(gl.ARRAY_BUFFER, 0, gridIndeces);
 
-			gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffers[1]);
-			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, positions);
+			// gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffers[1]);
+			// gl.getBufferSubData(gl.ARRAY_BUFFER, 0, positions);
 
-			gl.bindBuffer(gl.ARRAY_BUFFER, velocityBuffers[1]);
-			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, velocities);
+			// gl.bindBuffer(gl.ARRAY_BUFFER, velocityBuffers[1]);
+			// gl.getBufferSubData(gl.ARRAY_BUFFER, 0, velocities);
 
-			let changed = 0;
+			// let changed = 0;
 
-			for (let i = 0; i < NUM_BOIDS; i++) {
-				const gridIndex = gridIndeces[i * 2];
-				if (gridIndex === 0) continue;
+			// for (let i = 0; i < NUM_BOIDS; i++) {
+			// 	const gridIndex = gridIndeces[i * 2];
+			// 	if (gridIndex === 0) continue;
 
-				changed++;
-				removeFromGrid(gridIndeces[i * 2] + 1, i);
-				putInGrid(
-					gridIndex,
-					i,
-					[positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]],
-					[velocities[i * 3], velocities[i * 3 + 1], velocities[i * 3 + 2]]
-				);
-			}
+			// 	changed++;
+			// 	removeFromGrid(gridIndeces[i * 2] + 1, i);
+			// 	putInGrid(
+			// 		gridIndex,
+			// 		i,
+			// 		[positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]],
+			// 		[velocities[i * 3], velocities[i * 3 + 1], velocities[i * 3 + 2]]
+			// 	);
+			// }
+
+			// if (timeToOutput) console.log(changed);
 			// console.log(gridIndeces);
 
 			// console.log(changed);

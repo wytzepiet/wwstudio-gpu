@@ -19,8 +19,8 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
         }
     `;
 
-	const radius = 30;
-	const strength = 0.1;
+	const radius = 50;
+	const strength = '0.08';
 
 	const blurFragmentShaderSource = `
         precision mediump float;
@@ -29,19 +29,30 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
         uniform vec2 u_resolution;
         uniform vec2 u_direction;
 
-		vec4 mapToAsymptote(vec4 v, float max, float steepness) {
+		vec3 mapToAsymptote(vec3 v, float max, float steepness) {
     		return max - max / exp(steepness * v);
 		}
+		vec3 overflowColor(vec3 color, float treshold) {
+			vec3 overflow = max(vec3(0.0), color - treshold);
+			return mix(color, vec3(1.0), min(1.0, length(overflow)));
+	}
 
         void main() {
-            vec2 tex_offset = 2.0 / u_resolution; // size of a single texel
+            vec2 tex_offset = u_direction / u_resolution; // size of a single texel
             vec4 result = vec4(0.0);
+			float inverseRadius = 1.0 / ${radius}.0;
+			
             for (int i = -${radius}; i <= ${radius}; i++) {
-                vec2 offset = u_direction * float(i) * tex_offset;
-				float strength = 1.0 - abs(float(i)) / ${radius}.0;
-                result += texture2D(u_texture, v_texcoord + offset) * strength * ${strength};
+                vec2 offset = float(i) * tex_offset;
+				float strength = 1.0 - abs(float(i)) * inverseRadius;
+                result += texture2D(u_texture, v_texcoord + offset) * strength;
             }
-			gl_FragColor = mapToAsymptote(result, 1.0, 1.0);
+			result.rgb = mapToAsymptote(result.rgb, 1.0, ${strength});
+			result.rgb = overflowColor(result.rgb, 0.5);
+			result.a = 1.0;
+
+			gl_FragColor = result;
+
         }
     `;
 
@@ -52,8 +63,9 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
         uniform sampler2D u_bloom;
         void main() {
             vec4 scene = texture2D(u_scene, v_texcoord);
+			scene.rgb = vec3(scene.r + scene.g + scene.b); // grayscale the scene (and make it brighter)
             vec4 bloom = texture2D(u_bloom, v_texcoord);
-            gl_FragColor = scene + bloom; // Additive blending
+            gl_FragColor =  scene + bloom; // Additive blending
         }
     `;
 
@@ -133,8 +145,8 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 		const texture = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, type, null);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -172,12 +184,15 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 
 		// Call the user-defined scene render function
 		renderFunction();
+
+		// Unbind the framebuffer to avoid feedback loop
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	}
 
 	// Function to apply blur
 	function applyBlur(inputFBO: any, outputFBO: any, direction: number[], clear = true) {
 		gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO.framebuffer);
-		// if (clear) gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		if (clear) gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 		gl.useProgram(blurProgram);
 		gl.bindTexture(gl.TEXTURE_2D, inputFBO.texture);
