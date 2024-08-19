@@ -1,15 +1,13 @@
 #version 300 es
 precision highp float;
 
-in float u_cellSize;
-in vec3 u_gridSize;
+in vec3 v_position;
+in vec3 v_velocity;
 
-
-out vec4 outColor;
-
-
+layout(location = 0) out vec4 position;
+layout(location = 1) out vec4 velocity;
 
 void main() {
-    // Output a constant value to increment the count in the texture
-    outColor = vec4(1.0, 0.0, 0.0, 1.0); // Increment red channel by 1
+    position = vec4(1.0);
+    velocity = vec4(1.0); 
 }

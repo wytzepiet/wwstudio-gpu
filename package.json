@@ -28,7 +28,6 @@
 	"type": "module",
 	"dependencies": {
 		"@types/three": "^0.167.1",
-		"regl": "^2.1.0",
 		"tailwind-merge": "^2.4.0",
 		"three": "^0.167.0"
 	}

@@ -82,3 +82,11 @@ export function create3DTexture(
 	gl.bindTexture(gl.TEXTURE_3D, null);
 	return texture;
 }
+
+export const createBuffer = (gl: WebGL2RenderingContext, data: AllowSharedBufferSource) => {
+	const buffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+	gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_COPY);
+	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+	return buffer;
+};

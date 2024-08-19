@@ -1,26 +1,28 @@
 #version 300 es
 precision highp float;
 
-in vec3 a_oldPosition;  
-in vec3 a_newPosition;  
+in vec3 a_position;
+in vec3 a_velocity;
 
-uniform float u_cellSize;
 uniform vec3 u_gridSize;
+uniform vec3 u_canvasSize;
+uniform float u_boidsPerCell;
+uniform vec2 u_gridTextureSize;
 
-flat out int v_gridIndex;
-
-int gridIndex(vec3 position) {
-    vec3 gridPosition = floor(position / u_cellSize);
-    return int(gridPosition.x + gridPosition.y * u_gridSize.x + gridPosition.z * u_gridSize.x * u_gridSize.y);
-}
+out vec3 v_position;
+out vec3 v_velocity;
 
 void main() {
-    int oldGridIndex = gridIndex(a_oldPosition);
-    int newGridIndex = gridIndex(a_newPosition);
-    if(newGridIndex != oldGridIndex) {
-        v_gridIndex = newGridIndex;
-        gl_Position = vec4(a_newPosition, 1.0);
-    } else {
+    vec3 normalPos = a_position / u_canvasSize + 0.5;
+    vec3 gridPos = normalPos * u_gridSize;
+    float count = mod(float(gl_VertexID), u_boidsPerCell);
 
-    }
+    vec2 texCoord = vec2(gridPos.x * gridPos.y, gridPos.z * count) / u_gridTextureSize;
+
+    v_position = a_position;
+    v_velocity = a_velocity;
+
+    gl_PointSize = 20.0;
+    gl_Position = vec4(texCoord, 1.0, 1.0);
+    
 }

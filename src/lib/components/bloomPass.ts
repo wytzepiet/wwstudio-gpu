@@ -1,71 +1,110 @@
-export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
+export function initializeBloomEffect(
+	gl: WebGL2RenderingContext,
+	resolution: { x: number; y: number },
+	strength: number = 1,
+	radius: number = 1.0
+) {
+	const nMips = 5; // Number of mip levels
+	const bloomFactors = [1.0, 0.8, 0.6, 0.4, 0.2];
+	const bloomTintColors = [
+		[1.0, 1.0, 1.0],
+		[1.0, 1.0, 1.0],
+		[1.0, 1.0, 1.0],
+		[1.0, 1.0, 1.0],
+		[1.0, 1.0, 1.0]
+	];
+
 	// Shader sources
 	const vertexShaderSource = `
         attribute vec3 a_position;
-        attribute vec2 a_texcoord;
-        varying vec2 v_texcoord;
         void main() {
-            v_texcoord = a_texcoord;
             gl_Position = vec4(a_position, 1.0);
         }
     `;
 
-	const sceneFragmentShaderSource = `
-        precision mediump float;
-        varying vec2 v_texcoord;
-        uniform sampler2D u_texture;
-        void main() {
-            gl_FragColor = texture2D(u_texture, v_texcoord);
-        }
-    `;
+	const dimFragmentShaderSource = `
+		precision mediump float;
 
-	const radius = 50;
-	const strength = '0.08';
+		void main() {
+			gl_FragColor = vec4(0.0, 0.0, 0.0, 0.5);
+		}
+	`;
 
-	const blurFragmentShaderSource = `
+	const blurFragmentShaderSource = (kernelSize: number) => `
         precision mediump float;
-        varying vec2 v_texcoord;
         uniform sampler2D u_texture;
-        uniform vec2 u_resolution;
+        uniform vec2 u_texSize;
         uniform vec2 u_direction;
 
-		vec3 mapToAsymptote(vec3 v, float max, float steepness) {
-    		return max - max / exp(steepness * v);
-		}
-		vec3 overflowColor(vec3 color, float treshold) {
-			vec3 overflow = max(vec3(0.0), color - treshold);
-			return mix(color, vec3(1.0), min(1.0, length(overflow)));
-	}
+        float gaussianPdf(float x, float sigma) {
+            return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+        }
 
         void main() {
-            vec2 tex_offset = u_direction / u_resolution; // size of a single texel
-            vec4 result = vec4(0.0);
-			float inverseRadius = 1.0 / ${radius}.0;
+            vec2 tex_offset = u_direction / u_texSize; // size of a single texel
+            float sigma = float(${kernelSize});  // Adjust this value for blurriness
+            float weightSum = gaussianPdf(0.0, sigma);
+			vec2 texcoord = gl_FragCoord.xy / u_texSize;
+            vec3 diffuseSum = texture2D(u_texture, texcoord).rgb * weightSum;
 			
-            for (int i = -${radius}; i <= ${radius}; i++) {
+
+            for (int i = 1; i <= ${kernelSize.toFixed(0)}; i++) {
+                float x = float(i);
+                float w = gaussianPdf(x, sigma);
                 vec2 offset = float(i) * tex_offset;
-				float strength = 1.0 - abs(float(i)) * inverseRadius;
-                result += texture2D(u_texture, v_texcoord + offset) * strength;
+
+                vec3 sample1 = texture2D(u_texture, texcoord + offset).rgb;
+                vec3 sample2 = texture2D(u_texture, texcoord - offset).rgb;
+
+                diffuseSum += (sample1 + sample2) * w;
+                weightSum += 2.0 * w;
             }
-			result.rgb = mapToAsymptote(result.rgb, 1.0, ${strength});
-			result.rgb = overflowColor(result.rgb, 0.5);
-			result.a = 1.0;
 
-			gl_FragColor = result;
-
+            vec3 result = diffuseSum / weightSum;
+			gl_FragColor = vec4(result, 1.0);
         }
     `;
 
-	const combineFragmentShaderSource = `
+	const compositeFragShaderSource = `
         precision mediump float;
-        varying vec2 v_texcoord;
-        uniform sampler2D u_scene;
-        uniform sampler2D u_bloom;
+		uniform vec2 u_resolution;
+		uniform sampler2D sceneTexture;
+        uniform sampler2D blurTexture1;
+        uniform sampler2D blurTexture2;
+        uniform sampler2D blurTexture3;
+        uniform sampler2D blurTexture4;
+        uniform sampler2D blurTexture5;
+        uniform float bloomStrength;
+        uniform float bloomRadius;
+        uniform float bloomFactors[${nMips}];
+        uniform vec3 bloomTintColors[${nMips}];
+
+        float lerpBloomFactor(const in float factor) {
+            float mirrorFactor = 1.2 - factor;
+            return mix(factor, mirrorFactor, bloomRadius);
+        }
+
+		vec3 mapToAsymptote(vec3 val, float max, float speed) {
+			return max - max / (exp(speed * val));
+		}
+
         void main() {
-            vec4 scene = texture2D(u_scene, v_texcoord);
-			scene.rgb = vec3(scene.r + scene.g + scene.b); // grayscale the scene (and make it brighter)
-            vec4 bloom = texture2D(u_bloom, v_texcoord);
-            gl_FragColor =  scene + bloom; // Additive blending
+			vec2 texcoord = gl_FragCoord.xy / u_resolution;
+
+			vec4 scene = texture2D(sceneTexture, texcoord) * 1.0;
+
+            vec4 bloom =  (
+                lerpBloomFactor(bloomFactors[0]) * vec4(bloomTintColors[0], 1.0) * texture2D(blurTexture1, texcoord) +
+                lerpBloomFactor(bloomFactors[1]) * vec4(bloomTintColors[1], 1.0) * texture2D(blurTexture2, texcoord) +
+                lerpBloomFactor(bloomFactors[2]) * vec4(bloomTintColors[2], 1.0) * texture2D(blurTexture3, texcoord) +
+                lerpBloomFactor(bloomFactors[3]) * vec4(bloomTintColors[3], 1.0) * texture2D(blurTexture4, texcoord) +
+                lerpBloomFactor(bloomFactors[4]) * vec4(bloomTintColors[4], 1.0) * texture2D(blurTexture5, texcoord)
+            );
+
+			bloom.rgb = mapToAsymptote(bloom.rgb, 1.2, bloomStrength);
+
+
+            gl_FragColor = bloom + scene;
         }
     `;
 
@@ -100,23 +139,40 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 	}
 
 	const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource)!;
-	const sceneFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, sceneFragmentShaderSource)!;
-	const blurFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, blurFragmentShaderSource)!;
-	const combineFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, combineFragmentShaderSource)!;
 
-	const sceneProgram = createProgram(gl, vertexShader, sceneFragmentShader);
-	const blurProgram = createProgram(gl, vertexShader, blurFragmentShader);
-	const combineProgram = createProgram(gl, vertexShader, combineFragmentShader);
+	const dimFragShader = createShader(gl, gl.FRAGMENT_SHADER, dimFragmentShaderSource)!;
+	const compositeFragShader = createShader(gl, gl.FRAGMENT_SHADER, compositeFragShaderSource)!;
+
+	const dimProgram = createProgram(gl, vertexShader, dimFragShader);
+	const compositeProgram = createProgram(gl, vertexShader, compositeFragShader);
+
+	const kernelSizeArray = [3, 5, 7, 9, 11];
+	const blurPrograms: WebGLProgram[] = Array.from({ length: nMips }).map((_, i) => {
+		const fragmentShaderSource = blurFragmentShaderSource(kernelSizeArray[i]);
+		const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource)!;
+		return createProgram(gl, vertexShader, fragmentShader);
+	});
 
 	// Attribute and uniform locations
-	const positionLocation = gl.getAttribLocation(sceneProgram, 'a_position');
-	const texcoordLocation = gl.getAttribLocation(sceneProgram, 'a_texcoord');
+	const positionLocation = gl.getAttribLocation(blurPrograms[0], 'a_position');
 
-	const resolutionLocation = gl.getUniformLocation(blurProgram, 'u_resolution');
-	const directionLocation = gl.getUniformLocation(blurProgram, 'u_direction');
+	const texSizeLocations = blurPrograms.map((p) => gl.getUniformLocation(p, 'u_texSize'));
+	const directionLocations = blurPrograms.map((p) => gl.getUniformLocation(p, 'u_direction'));
 
-	const sceneTextureLocation = gl.getUniformLocation(combineProgram, 'u_scene');
-	const bloomTextureLocation = gl.getUniformLocation(combineProgram, 'u_bloom');
+	const resolutionLocation = gl.getUniformLocation(compositeProgram, 'u_resolution');
+	const bloomTextureLocations = [
+		gl.getUniformLocation(compositeProgram, 'blurTexture1'),
+		gl.getUniformLocation(compositeProgram, 'blurTexture2'),
+		gl.getUniformLocation(compositeProgram, 'blurTexture3'),
+		gl.getUniformLocation(compositeProgram, 'blurTexture4'),
+		gl.getUniformLocation(compositeProgram, 'blurTexture5')
+	];
+	const bloomStrengthLocation = gl.getUniformLocation(compositeProgram, 'bloomStrength');
+	const bloomRadiusLocation = gl.getUniformLocation(compositeProgram, 'bloomRadius');
+	const bloomFactorsLocation = gl.getUniformLocation(compositeProgram, 'bloomFactors');
+	const bloomTintColorsLocation = gl.getUniformLocation(compositeProgram, 'bloomTintColors');
+
+	const sceneTextureLocation = gl.getUniformLocation(compositeProgram, 'sceneTexture');
 
 	// Buffers
 	const positionBuffer = gl.createBuffer();
@@ -127,26 +183,13 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 		gl.STATIC_DRAW
 	);
 
-	const texcoordBuffer = gl.createBuffer();
-	gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
-	gl.bufferData(
-		gl.ARRAY_BUFFER,
-		new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]),
-		gl.STATIC_DRAW
-	);
-
 	// Framebuffers and textures
-	function createFramebufferTexture(
-		gl: WebGL2RenderingContext,
-		width: number,
-		height: number,
-		type: GLenum = gl.UNSIGNED_BYTE
-	) {
+	function createFramebufferTexture(gl: WebGL2RenderingContext, width: number, height: number) {
 		const texture = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_2D, texture);
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, type, null);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -154,12 +197,23 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 		gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-		return { framebuffer, texture };
+		return { framebuffer, texture, width, height };
 	}
 
-	const sceneFBO = createFramebufferTexture(gl, canvas.width, canvas.height);
-	const bloomFBO1 = createFramebufferTexture(gl, canvas.width, canvas.height);
-	const bloomFBO2 = createFramebufferTexture(gl, canvas.width, canvas.height);
+	type FramebufferTexture = ReturnType<typeof createFramebufferTexture>;
+	const renderTargetsHorizontal: FramebufferTexture[] = [];
+	const renderTargetsVertical: FramebufferTexture[] = [];
+	let resx = Math.round(resolution.x / 2);
+	let resy = Math.round(resolution.y / 2);
+
+	for (let i = 0; i < nMips; i++) {
+		renderTargetsHorizontal.push(createFramebufferTexture(gl, resx, resy));
+		renderTargetsVertical.push(createFramebufferTexture(gl, resx, resy));
+		resx = Math.max(1, Math.round(resx / 2));
+		resy = Math.max(1, Math.round(resy / 2));
+	}
+
+	const sceneFBO = createFramebufferTexture(gl, resolution.x, resolution.y);
 
 	// Function to draw a fullscreen quad
 	function drawQuad(gl: WebGL2RenderingContext, program: WebGLProgram) {
@@ -169,69 +223,85 @@ export function initializeBloomEffect(gl: WebGL2RenderingContext, canvas: HTMLCa
 		gl.enableVertexAttribArray(positionLocation);
 		gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
-		gl.enableVertexAttribArray(texcoordLocation);
-		gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
-
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 	}
 
 	// Function to render the scene
 	function renderScene(renderFunction: () => any) {
-		// Bind the framebuffer to render the scene into a texture
 		gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO.framebuffer);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		// gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-		// Call the user-defined scene render function
 		renderFunction();
-
-		// Unbind the framebuffer to avoid feedback loop
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	}
 
 	// Function to apply blur
-	function applyBlur(inputFBO: any, outputFBO: any, direction: number[], clear = true) {
+	function applyBlur(
+		i: number,
+		inputFBO: FramebufferTexture,
+		outputFBO: FramebufferTexture,
+		direction: [number, number]
+	) {
 		gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO.framebuffer);
-		if (clear) gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-		gl.useProgram(blurProgram);
+		gl.useProgram(blurPrograms[i]);
 		gl.bindTexture(gl.TEXTURE_2D, inputFBO.texture);
-		gl.activeTexture(gl.TEXTURE0);
 
-		gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
-		gl.uniform2f(directionLocation, direction[0], direction[1]);
-		drawQuad(gl, blurProgram);
+		gl.uniform2f(texSizeLocations[i], outputFBO.width, outputFBO.height);
+		gl.uniform2f(directionLocations[i], ...direction);
+
+		drawQuad(gl, blurPrograms[i]);
 	}
 
-	// Function to combine the scene with the bloom
-	function combineSceneAndBloom() {
-		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	// Function to combine the bloom effects
+	function combineBloomEffects() {
+		gl.useProgram(compositeProgram);
 
-		gl.useProgram(combineProgram);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, sceneFBO.texture);
 		gl.uniform1i(sceneTextureLocation, 0);
 
-		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, bloomFBO2.texture);
-		gl.uniform1i(bloomTextureLocation, 1);
+		// Bind all mip textures
+		for (let i = 0; i < nMips; i++) {
+			gl.activeTexture(gl[`TEXTURE${i + 1}` as keyof WebGL2RenderingContext] as GLenum);
+			gl.bindTexture(gl.TEXTURE_2D, renderTargetsVertical[i].texture);
+			gl.uniform1i(bloomTextureLocations[i], i + 1);
+		}
 
-		drawQuad(gl, combineProgram);
+		gl.uniform2f(resolutionLocation, resolution.x, resolution.y);
+		gl.uniform1f(bloomStrengthLocation, strength);
+		gl.uniform1f(bloomRadiusLocation, radius);
+		gl.uniform1fv(bloomFactorsLocation, new Float32Array(bloomFactors.flat()));
+		gl.uniform3fv(bloomTintColorsLocation, new Float32Array(bloomTintColors.flat()));
+
+		drawQuad(gl, compositeProgram);
 	}
 
-	// Return a function that can be used in the render loop
+	// Return the function to be called in the render loop
 	return function (renderFunction: () => any) {
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
 		// 1. Render the scene to a texture
 		renderScene(renderFunction);
 
-		// 2. Apply horizontal blur
-		applyBlur(sceneFBO, bloomFBO1, [1.0, 0.0]);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-		// 3. Apply vertical blur
-		applyBlur(bloomFBO1, bloomFBO2, [0.0, 1.0]);
+		let inputRenderTarget = sceneFBO;
 
-		// 4. Combine the scene and the bloom
-		combineSceneAndBloom();
+		// 2. Apply blur progressively through the mip chain
+		for (let i = 0; i < nMips; i++) {
+			applyBlur(i, inputRenderTarget, renderTargetsHorizontal[i], [1.0, 0.0]); // Horizontal blur
+			applyBlur(i, renderTargetsHorizontal[i], renderTargetsVertical[i], [0.0, 1.0]); // Vertical blur
+			inputRenderTarget = renderTargetsVertical[i];
+		}
+
+		// 3. Combine the bloom effects
+		combineBloomEffects();
+
+		gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO.framebuffer);
+		drawQuad(gl, dimProgram);
 	};
 }

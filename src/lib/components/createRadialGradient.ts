@@ -13,18 +13,12 @@ export function createRadialGradientTexture(
 		return null;
 	}
 
+	const r = size / 2;
 	// Create radial gradient
-	const gradient = ctx.createRadialGradient(
-		size / 2,
-		size / 2,
-		0, // Inner circle (center)
-		size / 2,
-		size / 2,
-		size / 2 // Outer circle (radius)
-	);
+	const gradient = ctx.createRadialGradient(r, r, 0, r, r, r);
 
 	// Add color stops (white to transparent)
-	gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)'); // Fully white at the center
+	gradient.addColorStop(0.9, 'rgba(255, 255, 255, 1.0)'); // Fully white at the center
 	gradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)'); // Fully transparent at the edges
 
 	// Fill the canvas with the gradient

@@ -1,7 +1,5 @@
 export function renderTextureFullScreen(
-	webglTexture: (gl: WebGL2RenderingContext) => WebGLTexture,
-	textureWidth: number,
-	textureHeight: number
+	webglTexture: (gl: WebGL2RenderingContext) => WebGLTexture
 ): void {
 	// Create a new fullscreen canvas
 	const canvas = document.createElement('canvas');
