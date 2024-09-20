@@ -4,7 +4,117 @@
 
 @layer base {
 	body {
-		@apply bg-black;
+		@apply bg-black text-white font-moneta;
 		overflow-x: hidden;
 	}
+}
+
+.lucide-icon {
+	width: 1.4em;
+}
+
+@font-face {
+	font-family: 'Hero';
+	font-weight: light;
+	src: url('/fonts/hero/Hero-Light.otf') format('opentype');
+}
+@font-face {
+	font-family: 'Hero';
+	font-weight: normal;
+	src: url('/fonts/hero/Hero-Regular.otf') format('opentype');
+}
+@font-face {
+	font-family: 'Hero';
+	font-weight: bold;
+	src: url('/fonts/hero/Hero-Bold.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Archive';
+	font-style: normal;
+	src: url('/fonts/archive/Archive-Regular.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Stannum';
+	font-weight: light;
+	src: url('/fonts/stannum/Stannum-Light.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Stannum';
+	font-weight: normal;
+	src: url('/fonts/stannum/Stannum-Regular.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Stannum';
+	font-weight: medium;
+	src: url('/fonts/stannum/Stannum-Medium.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Stannum';
+	font-weight: bold;
+	src: url('/fonts/stannum/Stannum-Bold.otf') format('opentype');
+}
+
+@font-face {
+	font-family: 'Moneta';
+	src: url('/fonts/moneta/Moneta-Black.eot');
+	src:
+		local('Moneta Black'),
+		local('Moneta-Black'),
+		url('/fonts/moneta/Moneta-Black.eot?#iefix') format('embedded-opentype'),
+		url('/fonts/moneta/Moneta-Black.woff2') format('woff2'),
+		url('/fonts/moneta/Moneta-Black.woff') format('woff'),
+		url('/fonts/moneta/Moneta-Black.ttf') format('truetype');
+	font-weight: 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Moneta';
+	src: url('/fonts/moneta/Moneta-Bold.eot');
+	src:
+		local('Moneta Bold'),
+		local('Moneta-Bold'),
+		url('/fonts/moneta/Moneta-Bold.eot?#iefix') format('embedded-opentype'),
+		url('/fonts/moneta/Moneta-Bold.woff2') format('woff2'),
+		url('/fonts/moneta/Moneta-Bold.woff') format('woff'),
+		url('/fonts/moneta/Moneta-Bold.ttf') format('truetype');
+	font-weight: bold;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Moneta';
+	src: url('/fonts/moneta/Moneta-Regular.eot');
+	src:
+		local('Moneta'),
+		local('Moneta-Regular'),
+		url('/fonts/moneta/Moneta-Regular.eot?#iefix') format('embedded-opentype'),
+		url('/fonts/moneta/Moneta-Regular.woff2') format('woff2'),
+		url('/fonts/moneta/Moneta-Regular.woff') format('woff'),
+		url('/fonts/moneta/Moneta-Regular.ttf') format('truetype');
+	font-weight: normal;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Moneta';
+	src: url('/fonts/moneta/Moneta-Light.eot');
+	src:
+		local('Moneta Light'),
+		local('Moneta-Light'),
+		url('/fonts/moneta/Moneta-Light.eot?#iefix') format('embedded-opentype'),
+		url('/fonts/moneta/Moneta-Light.woff2') format('woff2'),
+		url('/fonts/moneta/Moneta-Light.woff') format('woff'),
+		url('/fonts/moneta/Moneta-Light.ttf') format('truetype');
+	font-weight: 300;
+	font-style: normal;
+	font-display: swap;
 }
